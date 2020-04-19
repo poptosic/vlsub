@@ -5,6 +5,10 @@ Authors:  Guillaume Le Maout
 Contact: 
 http://addons.videolan.org/messages/?action=newmessage&username=exebetche
 Bug report: http://addons.videolan.org/content/show.php/?content=148752
+
+Function base64_encode is based on the code by Alex Kloss <alexthkloss@web.de>
+from http://lua-users.org/wiki/BaseSixtyFour.
+
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or
@@ -63,7 +67,7 @@ local options = {
     int_configuration = 'Configuration',
     int_help = 'Help',
     int_search_hash = 'Search by hash',
-    int_search_name = 'Search by name',
+    int_search_name = 'Search by title',
     int_title = 'Title',
     int_season = 'Season (series)',
     int_episode = 'Episode (series)',
@@ -150,7 +154,6 @@ local options = {
   
     action_login = 'Logging in',
     action_logout = 'Logging out',
-    action_noop = 'Checking session',
     action_search = 'Searching subtitles',
     action_hash = 'Calculating movie hash',
     
@@ -158,7 +161,6 @@ local options = {
     mess_error = 'Error',
     mess_no_response = 'Server not responding',
     mess_unauthorized = 'Request unauthorized',
-    mess_expired = 'Session expired, retrying',
     mess_overloaded = 'Server overloaded, please retry later',
     mess_no_input = 'Please use this method during playing',
     mess_not_local = 'This method works with local file only (for now)',
@@ -362,11 +364,8 @@ end
 function deactivate()
   vlc.msg.dbg("[VLsub] Bye bye!")
   if dlg then
-    dlg:hide() 
-  end
-  
-  if openSub.session.token and openSub.session.token ~= "" then
-    openSub.request("LogOut")
+    dlg:hide()
+    dlg = nil
   end
 end
 
@@ -392,21 +391,21 @@ end
 
 function interface_main()
   dlg:add_label(lang["int_default_lang"]..':', 1, 1, 1, 1)
-  input_table['language'] =  dlg:add_dropdown(2, 1, 2, 1)
+  input_table['language'] =  dlg:add_dropdown(2, 1, 3, 1)
   dlg:add_button(lang["int_search_hash"], 
-    searchHash, 4, 1, 1, 1)
+    searchHash, 5, 1, 2, 1)
   
   dlg:add_label(lang["int_title"]..':', 1, 2, 1, 1)
   input_table['title'] = dlg:add_text_input(
-    openSub.movie.title or "", 2, 2, 2, 1)
+    openSub.movie.title or "", 2, 2, 3, 1)
   dlg:add_button(lang["int_search_name"], 
-    searchIMBD, 4, 2, 1, 1)
+    searchIMBD, 5, 2, 2, 1)
   dlg:add_label(lang["int_season"]..':', 1, 3, 1, 1)
   input_table['seasonNumber'] = dlg:add_text_input(
-    openSub.movie.seasonNumber or "", 2, 3, 2, 1)
+    openSub.movie.seasonNumber or "", 2, 3, 3, 1)
   dlg:add_label(lang["int_episode"]..':', 1, 4, 1, 1)
   input_table['episodeNumber'] = dlg:add_text_input(
-    openSub.movie.episodeNumber or "", 2, 4, 2, 1)
+    openSub.movie.episodeNumber or "", 2, 4, 3, 1)
   input_table['mainlist'] = dlg:add_list(1, 5, 4, 1)
   input_table['message'] = nil
   input_table['message'] = dlg:add_label(' ', 1, 6, 4, 1)
@@ -1162,7 +1161,7 @@ openSub = {
   itemStore = nil,
   actionLabel = "",
   conf = {
-    url = "http://api.opensubtitles.org/xml-rpc",
+	url = "http://rest.opensubtitles.org/search/",
     path = nil,
     HTTPVersion = "1.1",
     userAgentHTTP = app_useragent,
@@ -1172,10 +1171,6 @@ openSub = {
     languages = languages
   },
   option = options,
-  session = {
-    loginTime = 0,
-    token = ""
-  },
   file = {
     hasInput = false,
     uri = nil,
@@ -1198,57 +1193,23 @@ openSub = {
     sublanguageid = ""
   },
   request = function(methodName)
-    local params = openSub.methods[methodName].params()
-    local reqTable = openSub.getMethodBase(methodName, params)
-    local request = "<?xml version='1.0'?>"..dump_xml(reqTable)
-    local host, path = parse_url(openSub.conf.url)		
-    local header = {
-      "POST "..path.." HTTP/"..openSub.conf.HTTPVersion, 
-      "Host: "..host, 
-      "User-Agent: "..openSub.conf.userAgentHTTP, 
-      "Content-Type: text/xml", 
-      "Content-Length: "..string.len(request),
-      "",
-      ""
-    }
-    request = table.concat(header, "\r\n")..request
-    
-    local response
-    local status, responseStr = http_req(host, 80, request)
-    
-    if status == 200 then 
-      response = parse_xmlrpc(responseStr)
-      
-      if response then
-        if response.status == "200 OK" then
-          return openSub.methods[methodName]
-            .callback(response)
-        elseif response.status == "406 No session" then
-          openSub.request("LogIn")
-        elseif response then
-          setError("code '"..
-            response.status..
-            "' ("..status..")")
-          return false
-        end
-      else
-        setError("Server not responding")
-        return false
-      end
-    elseif status == 401 then
-      setError("Request unauthorized")
-      response = parse_xmlrpc(responseStr)
-      if openSub.session.token ~= response.token then
-        setMessage("Session expired, retrying")
-        openSub.session.token = response.token
-        openSub.request(methodName)
-      end
-      return false
-    elseif status == 503 then 
-      setError("Server overloaded, please retry later")
+	local params = openSub.methods[methodName].params()
+	url = openSub.conf.url..params
+
+    local response = get(url,
+            openSub.option.os_username,
+            openSub.option.os_password)
+
+    local json = require("dkjson")
+    local obj, pos, err = json.decode(response, 1, nil)
+
+    if not err then
+      return openSub.methods[methodName].callback(obj)
+    else
+      setError("[VLsub] Error processing response: "..err)
       return false
     end
-    
+
   end,
   getMethodBase = function(methodName, param)
     if openSub.methods[methodName].methodName then
@@ -1263,140 +1224,52 @@ openSub = {
     return request
   end,
   methods = {
-    LogIn = {
-      params = function()
-        openSub.actionLabel = lang["action_login"]
-        return {
-          { value={ string=openSub.option.os_username } },
-          { value={ string=openSub.option.os_password } },
-          { value={ string=openSub.movie.sublanguageid } },
-          { value={ string=openSub.conf.useragent } } 
-        }
-      end,
-      callback = function(resp)
-        openSub.session.token = resp.token
-        openSub.session.loginTime = os.time()
-        return true
-      end
-    },
-    LogOut = {
-      params = function()
-        openSub.actionLabel = lang["action_logout"]
-        return {
-          { value={ string=openSub.session.token } } 
-        }
-      end,
-      callback = function()
-        return true
-      end
-    },
-    NoOperation = {
-      params = function()
-        openSub.actionLabel = lang["action_noop"]
-        return {
-          { value={ string=openSub.session.token } } 
-        }
-      end,
-      callback = function(resp)
-        return true
-      end
-    },
     SearchSubtitlesByHash = {
-      methodName = "SearchSubtitles",
+      methodName = "SearchSubtitlesByHash",
       params = function()
         openSub.actionLabel = lang["action_search"]
         setMessage(openSub.actionLabel..": "..
           progressBarContent(0))
-        
-        return {
-          { value={ string=openSub.session.token } },
-          { value={
-            array={
-             data={
-              value={
-               struct={
-                member={
-                 { name="sublanguageid", value={ 
-                  string=openSub.movie.sublanguageid } 
-                  },
-                 { name="moviehash", value={ 
-                  string=openSub.file.hash } },
-                 { name="moviebytesize", value={ 
-                  double=openSub.file.bytesize } } 
-                  }}}}}}}
-        }
+
+        local args = {};
+        table.insert(args, "moviebytesize-"..openSub.file.bytesize)
+        table.insert(args, "moviehash-"..openSub.file.hash)
+        table.insert(args, "sublanguageid-"..openSub.movie.sublanguageid)
+        return table.concat(args, '/')
       end,
       callback = function(resp)
-        openSub.itemStore = resp.data
+        openSub.itemStore = resp
       end
     },
     SearchSubtitles = {
       methodName = "SearchSubtitles",
-      params = function()
-        openSub.actionLabel = lang["action_search"]
-        setMessage(openSub.actionLabel..": "..
-          progressBarContent(0))
-                
-        local member = {
-             { name="sublanguageid", value={ 
-              string=openSub.movie.sublanguageid } },
-             { name="query", value={ 
-              string=openSub.movie.title } } }
-             
-        
-        if openSub.movie.seasonNumber ~= nil then
-          table.insert(member, { name="season", value={ 
-            string=openSub.movie.seasonNumber } })
+	  params = function()
+		-- Probably just updating the UI message
+		openSub.actionLabel = lang["action_search"]
+		setMessage(openSub.actionLabel..": "..
+		  progressBarContent(0))
+		
+		local args = {}
+		local encode_uri = vlc.strings.encode_uri_component
+		
+		if openSub.movie.episodeNumber ~= nil then
+          table.insert(args, "episode-"..openSub.movie.episodeNumber)
         end 
-        
-        if openSub.movie.episodeNumber ~= nil then
-          table.insert(member, { name="episode", value={ 
-            string=openSub.movie.episodeNumber } })
-        end 
-        
-        return {
-          { value={ string=openSub.session.token } },
-          { value={
-            array={
-             data={
-              value={
-               struct={
-                member=member
-                  }}}}}}
-        }
-      end,
+		
+		table.insert(args, "query-"..encode_uri(openSub.movie.title))
+
+		if openSub.movie.seasonNumber ~= nil then
+		  table.insert(args, "season-"..openSub.movie.seasonNumber)
+        end
+		
+		table.insert(args, "sublanguageid-"..openSub.movie.sublanguageid)
+		
+		return string.lower(table.concat(args, "/"))
+	  end,
       callback = function(resp)
-        openSub.itemStore = resp.data
+        openSub.itemStore = resp
       end
     },
-    SearchSubtitles2 = {
-      methodName = "SearchSubtitles",
-      params = function()
-        openSub.actionLabel = lang["action_search"]
-        setMessage(openSub.actionLabel..": "..
-          progressBarContent(0))
-                
-        local member = {
-             { name="sublanguageid", value={ 
-              string=openSub.movie.sublanguageid } },
-             { name="tag", value={ 
-              string=openSub.file.completeName } } }
-        
-        return {
-          { value={ string=openSub.session.token } },
-          { value={
-            array={
-             data={
-              value={
-               struct={
-                member=member
-                  }}}}}}
-        }
-      end,
-      callback = function(resp)
-        openSub.itemStore = resp.data
-      end
-    }
   },
   getInputItem = function()
     return vlc.item or vlc.input.item()
@@ -1647,14 +1520,6 @@ openSub = {
     collectgarbage()
     return true
   end,
-  checkSession = function()
-    
-    if openSub.session.token == "" then
-      openSub.request("LogIn")
-    else
-      openSub.request("NoOperation")
-    end
-  end
 }
 
 function searchHash()
@@ -1668,7 +1533,6 @@ function searchHash()
   openSub.getMovieHash()
   
   if openSub.file.hash then
-    openSub.checkSession()
     openSub.request("SearchSubtitlesByHash")
     display_subtitles()
   end
@@ -1689,7 +1553,6 @@ function searchIMBD()
   end
   
   if openSub.movie.title ~= "" then
-    openSub.checkSession()
     openSub.request("SearchSubtitles")
     display_subtitles()
   end
@@ -1698,12 +1561,12 @@ end
 function display_subtitles()
   local mainlist = input_table["mainlist"]
   mainlist:clear()
-  
-  if openSub.itemStore == "0" then 
+
+  if not openSub.itemStore then
     mainlist:add_value(lang["mess_no_res"], 1)
     setMessage("<b>"..lang["mess_complete"]..":</b> "..
       lang["mess_no_res"])
-  elseif openSub.itemStore then 
+  elseif openSub.itemStore then
     for i, item in ipairs(openSub.itemStore) do
       mainlist:add_value(
       (item.SubFileName or "???")..
@@ -1714,6 +1577,8 @@ function display_subtitles()
       #(openSub.itemStore).."  "..lang["mess_res"])
   end
 end
+
+
 
 function get_first_sel(list)
   local selection = list:get_selection()
@@ -1930,7 +1795,7 @@ end
 
             --[[ Network utils]]--
 
-function get(url)
+function get(url, username, password)
   local host, path = parse_url(url)
   local header = {
     "GET "..path.." HTTP/"..openSub.conf.HTTPVersion, 
@@ -1939,8 +1804,13 @@ function get(url)
     "",
     ""
   }
-  local request = table.concat(header, "\r\n")
 
+  if username and password then
+    b64_auth = base64_encode(username..":"..password)
+    table.insert(header, 3, "Authorization: Basic "..b64_auth)
+  end
+
+  local request = table.concat(header, "\r\n")
   local status, response = http_req(host, 80, request)
   
   if status == 200 then 
@@ -1963,7 +1833,7 @@ function http_req(host, port, request)
 	vlc.net.send(fd, request)
 	vlc.net.poll(pollfds)
 
-	local response = vlc.net.recv(fd, 2048)
+	local response = vlc.net.recv(fd, 8192)
 	local buf = ""
 	local headerStr, header, body
 	local contentLength, status, TransferEncoding, chunked
@@ -1976,9 +1846,9 @@ function http_req(host, port, request)
 			headerStr, body = buf:match("(.-\r?\n)\r?\n(.*)")
 
 			if headerStr then
-				header = parse_header(headerStr);
-				status = tonumber(header["statuscode"]);
-				contentLength = tonumber(header["Content-Length"]);
+				header = parse_header(headerStr)
+				status = tonumber(header["statuscode"])
+				contentLength = tonumber(header["Content-Length"])
 				if not contentLength then
 					contentLength = tonumber(header["X-Uncompressed-Content-Length"])
 				end
@@ -1994,13 +1864,12 @@ function http_req(host, port, request)
 		if chunked then
 			chunk_size_hex, chunk_content = buf:match("(%x+)\r?\n(.*)")
 			chunk_size = tonumber(chunk_size_hex,16)
-			chunk_content_len = chunk_content:len()
-			chunk_remaining = chunk_size-chunk_content_len
+			chunk_content_len = chunk_content:len() - 2
 
 			while chunk_content_len > chunk_size do
 				body = body..chunk_content:sub(0, chunk_size)
-				buf = chunk_content:sub(chunk_size+2)
-				
+				buf = chunk_content:sub(chunk_size + 2)
+
 				chunk_size_hex, chunk_content = buf:match("(%x+)\r?\n(.*)")
 				
 				if not chunk_size_hex 
@@ -2011,20 +1880,19 @@ function http_req(host, port, request)
 				
 				chunk_size = tonumber(chunk_size_hex,16)
 				chunk_content_len = chunk_content:len()
-				chunk_remaining = chunk_size-chunk_content_len
 			end
-			
+
 			if chunk_size == 0 then
 				break
 			end
 		end
 
 		if contentLength then
-      if #body == 0 then
-        bodyLength = #buf
-      else
-        bodyLength = #body
-      end
+            if #body == 0 then
+              bodyLength = #buf
+            else
+              bodyLength = #body
+            end
       
 			pct = bodyLength / contentLength * 100
 			setMessage(openSub.actionLabel..": "..progressBarContent(pct))
@@ -2394,4 +2262,19 @@ end
 
 function remove_tag(str)
   return string.gsub(str, "{[^}]+}", "")
+end
+
+local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+function base64_encode(data)
+    return ((data:gsub('.', function(x)
+        local r,b='',x:byte()
+        for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
+        return r;
+    end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+        if (#x < 6) then return '' end
+        local c=0
+        for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
+        return b:sub(c+1,c+1)
+    end)..({ '', '==', '=' })[#data%3+1])
 end
