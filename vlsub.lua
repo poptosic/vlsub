@@ -67,7 +67,7 @@ local options = {
     int_configuration = 'Configuration',
     int_help = 'Help',
     int_search_hash = 'Search by hash',
-    int_search_name = 'Search by title',
+    int_search_name = 'Search by name',
     int_title = 'Title',
     int_season = 'Season (series)',
     int_episode = 'Episode (series)',
@@ -391,33 +391,38 @@ end
 
 function interface_main()
   dlg:add_label(lang["int_default_lang"]..':', 1, 1, 1, 1)
-  input_table['language'] =  dlg:add_dropdown(2, 1, 3, 1)
-  dlg:add_button(lang["int_search_hash"], 
-    searchHash, 5, 1, 2, 1)
-  
+  input_table['language'] =  dlg:add_dropdown(2, 1, 6, 1)
+
   dlg:add_label(lang["int_title"]..':', 1, 2, 1, 1)
   input_table['title'] = dlg:add_text_input(
-    openSub.movie.title or "", 2, 2, 3, 1)
-  dlg:add_button(lang["int_search_name"], 
-    searchIMBD, 5, 2, 2, 1)
+    openSub.movie.title or "", 2, 2, 6, 1)
+
   dlg:add_label(lang["int_season"]..':', 1, 3, 1, 1)
   input_table['seasonNumber'] = dlg:add_text_input(
-    openSub.movie.seasonNumber or "", 2, 3, 3, 1)
+    openSub.movie.seasonNumber or "", 2, 3, 6, 1)
   dlg:add_label(lang["int_episode"]..':', 1, 4, 1, 1)
   input_table['episodeNumber'] = dlg:add_text_input(
-    openSub.movie.episodeNumber or "", 2, 4, 3, 1)
-  input_table['mainlist'] = dlg:add_list(1, 5, 4, 1)
+    openSub.movie.episodeNumber or "", 2, 4, 6, 1)
+
+  dlg:add_button(lang["int_search_name"],
+      searchIMBD, 2, 5, 4, 1)
+  dlg:add_button(lang["int_search_hash"],
+      searchHash, 6, 5, 2, 1)
+
+  input_table['mainlist'] = dlg:add_list(1, 6, 7, 1)
+
   input_table['message'] = nil
-  input_table['message'] = dlg:add_label(' ', 1, 6, 4, 1)
+  input_table['message'] = dlg:add_label(' ', 1, 7, 4, 1)
+
   dlg:add_button(
-    lang["int_show_help"], show_help, 1, 7, 1, 1)
+    lang["int_dowload_sel"], download_subtitles, 1, 8, 2, 1)
   dlg:add_button(
-    '   '..lang["int_show_conf"]..'   ', show_conf, 2, 7, 1, 1)
+    '   '..lang["int_show_conf"]..'   ', show_conf, 5, 8, 1, 1)
   dlg:add_button(
-    lang["int_dowload_sel"], download_subtitles, 3, 7, 1, 1)
+    lang["int_show_help"], show_help, 6, 8, 1, 1)
   dlg:add_button(
-    lang["int_close"], close, 4, 7, 1, 1) 
-  
+    lang["int_close"], close, 7, 8, 1, 1)
+
   assoc_select_conf(
     'language',
     'language',
@@ -425,7 +430,7 @@ function interface_main()
     2, 
     lang["int_all"])
     
-  display_subtitles()
+  --display_subtitles()
 end
 
 function set_interface_main()
