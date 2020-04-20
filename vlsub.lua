@@ -365,7 +365,6 @@ function deactivate()
   vlc.msg.dbg("[VLsub] Bye bye!")
   if dlg then
     dlg:hide()
-    dlg = nil
   end
 end
 
@@ -430,7 +429,6 @@ function interface_main()
     2, 
     lang["int_all"])
     
-  --display_subtitles()
 end
 
 function set_interface_main()
@@ -1089,7 +1087,7 @@ function get_available_translations()
   then
     openSub.actionLabel = lang["int_searching_transl"]
     
-    local translations_content = get(translations_url)
+    local status, translations_content = get(translations_url)
     if not translations_content then
       collectgarbage()
       return false
@@ -1166,7 +1164,7 @@ openSub = {
   itemStore = nil,
   actionLabel = "",
   conf = {
-	url = "http://rest.opensubtitles.org/search/",
+    url = "http://rest.opensubtitles.org/search/",
     path = nil,
     HTTPVersion = "1.1",
     userAgentHTTP = app_useragent,
@@ -1198,12 +1196,19 @@ openSub = {
     sublanguageid = ""
   },
   request = function(methodName)
-	local params = openSub.methods[methodName].params()
-	url = openSub.conf.url..params
+    local params = openSub.methods[methodName].params()
+    url = openSub.conf.url..params
 
-    local response = get(url,
+    local status, response = get(url,
             openSub.option.os_username,
             openSub.option.os_password)
+
+    vlc.msg.dbg(string.format('%d %s', status, response))
+
+    if status ~= 200 then
+      setError("[VLsub] Error processing response: "..err)
+      return false
+    end
 
     local json = require("dkjson")
     local obj, pos, err = json.decode(response, 1, nil)
@@ -1248,29 +1253,28 @@ openSub = {
     },
     SearchSubtitles = {
       methodName = "SearchSubtitles",
-	  params = function()
-		-- Probably just updating the UI message
-		openSub.actionLabel = lang["action_search"]
-		setMessage(openSub.actionLabel..": "..
-		  progressBarContent(0))
-		
-		local args = {}
-		local encode_uri = vlc.strings.encode_uri_component
-		
-		if openSub.movie.episodeNumber ~= nil then
-          table.insert(args, "episode-"..openSub.movie.episodeNumber)
-        end 
-		
-		table.insert(args, "query-"..encode_uri(openSub.movie.title))
+      params = function()
+        openSub.actionLabel = lang["action_search"]
+        setMessage(openSub.actionLabel .. ": " ..
+                progressBarContent(0))
 
-		if openSub.movie.seasonNumber ~= nil then
-		  table.insert(args, "season-"..openSub.movie.seasonNumber)
+        local args = {}
+        local encode_uri = vlc.strings.encode_uri_component
+
+        if openSub.movie.episodeNumber ~= nil then
+          table.insert(args, "episode-" .. openSub.movie.episodeNumber)
         end
-		
-		table.insert(args, "sublanguageid-"..openSub.movie.sublanguageid)
-		
-		return string.lower(table.concat(args, "/"))
-	  end,
+
+        table.insert(args, "query-" .. encode_uri(openSub.movie.title))
+
+        if openSub.movie.seasonNumber ~= nil then
+          table.insert(args, "season-" .. openSub.movie.seasonNumber)
+        end
+
+        table.insert(args, "sublanguageid-" .. openSub.movie.sublanguageid)
+
+        return string.lower(table.concat(args, "/"))
+      end,
       callback = function(resp)
         openSub.itemStore = resp
       end
@@ -1583,8 +1587,6 @@ function display_subtitles()
   end
 end
 
-
-
 function get_first_sel(list)
   local selection = list:get_selection()
   for index, name in pairs(selection) do 
@@ -1723,7 +1725,7 @@ end
 function dump_zip(url, dir, subfileName)
   -- Dump zipped data in a temporary file
   setMessage(openSub.actionLabel..": "..progressBarContent(0))
-  local resp = get(url)
+  local status, resp = get(url)
   
   if not resp then 
     setError(lang["mess_no_response"])
@@ -1816,14 +1818,8 @@ function get(url, username, password)
   end
 
   local request = table.concat(header, "\r\n")
-  local status, response = http_req(host, 80, request)
-  
-  if status == 200 then 
-    return response
-  else
-    vlc.msg.err("[VLSub] HTTP "..tostring(status).." : "..response)
-    return false
-  end
+  status, response = http_req(host, 80, request)
+  return status, response
 end
 
 function http_req(host, port, request)
@@ -1869,9 +1865,9 @@ function http_req(host, port, request)
 		if chunked then
 			chunk_size_hex, chunk_content = buf:match("(%x+)\r?\n(.*)")
 			chunk_size = tonumber(chunk_size_hex,16)
-			chunk_content_len = chunk_content:len() - 2
+			chunk_content_len = chunk_content:len()
 
-			while chunk_content_len > chunk_size do
+			while chunk_content_len > (chunk_size  + 2) do
 				body = body..chunk_content:sub(0, chunk_size)
 				buf = chunk_content:sub(chunk_size + 2)
 
@@ -1906,8 +1902,8 @@ function http_req(host, port, request)
 			end
 		end
 
-		vlc.net.poll(pollfds)
-		response = vlc.net.recv(fd, 1024)
+      vlc.net.poll(pollfds)
+      response = vlc.net.recv(fd, 1024)
 	end
 	
 	if not chunked then
