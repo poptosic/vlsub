@@ -1942,7 +1942,7 @@ function parse_header(data)
     "([^%s:]+)(:?)%s([^\n]+)\r?\n")
   do
     if s == "" then 
-    header['statuscode'] = tonumber(string.sub(val, 1 , 3))
+      header['statuscode'] = tonumber(string.sub(val, 1 , 3))
     else 
       header[name] = val
     end
@@ -2014,68 +2014,6 @@ function parse_xml(data)
   
   collectgarbage()
   return tree
-end
-
-function parse_xmlrpc(xmlText)
-	local stack = {}
-	local tree = {}
-	local tmp, name = nil, nil
-	table.insert(stack, tree)
-	local FromXmlString =  vlc.strings.resolve_xml_special_chars
-	
-	local data_handle = {
-		int = function(v) return tonumber(v) end,
-		i4 = function(v) return tonumber(v) end,
-		double = function(v) return tonumber(v) end,
-		boolean = function(v) return tostring(v) end,
-		base64 = function(v) return tostring(v) end, -- FIXME
-		["string"] = function(v) return FromXmlString(v) end
-	}
-	
-   for c, label, empty, value 
-   in xmlText:gmatch("<(%/?)([%w_:]+)(%/?)>([^<]*)") do
-   
-		if c == "" 
-		then -- start tag
-			if label == "struct"
-			or label == "array" then
-				tmp = nil
-				tmp = {}
-				if name then
-					stack[#stack][name] = tmp
-				else
-					table.insert(stack[#stack], tmp)
-				end
-				table.insert(stack, tmp)
-				name = nil
-			elseif label == "name" then
-				name = value
-			elseif data_handle[label] then
-				if name then
-					stack[#stack][name] = data_handle[label](value)
-				else
-					table.insert(stack[#stack], 
-					data_handle[label](value))
-				end
-				name = nil
-			end
-			if empty == "/"  -- empty tag
-			and #stack>0 
-			and (label == "struct"
-			or label == "array")
-			then
-				table.remove(stack)
-			end
-		else -- end tag
-			if #stack>0 
-			and (label == "struct"
-			or label == "array")then
-				table.remove(stack)
-			end
-		end
-	end
-	
-	return tree[1]
 end
 
 function dump_xml(data)
@@ -2156,44 +2094,26 @@ end
 
             --[[ Misc utils]]--
 
-function make_uri(str)
-  str = str:gsub("\\", "/")
-  local windowdrive = string.match(str, "^(%a:).+$")
-  local encode_uri = vlc.strings.encode_uri_component
-  local encodedPath = ""
-  for w in string.gmatch(str, "/([^/]+)") do
-    encodedPath = encodedPath.."/"..encode_uri(w) 
-  end
-    
-  if windowdrive then
-    return "file:///"..windowdrive..encodedPath
-  else
-    return "file://"..encodedPath
-  end
-end
-
 function file_touch(name) -- test write ability
-  if not name or trim(name) == "" 
+  if not name or trim(name) == ""
   then return false end
-  
-  local f=io.open(name ,"w")
-  if f~=nil then 
-    io.close(f) 
-    return true 
-  else 
-    return false 
+
+  local f=vlc.io.open(name, "w")
+  if f~=nil then
+    return true
+  else
+    return false
   end
 end
 
 function file_exist(name) -- test readability
-  if not name or trim(name) == "" 
+  if not name or trim(name) == ""
   then return false end
-  local f=io.open(name ,"r")
-  if f~=nil then 
-    io.close(f) 
-    return true 
-  else 
-    return false 
+  local f=vlc.io.open(name, "r")
+  if f~=nil then
+    return true
+  else
+    return false
   end
 end
 
@@ -2218,22 +2138,17 @@ function is_dir(path)
 end
 
 function list_dir(path)
-  if not path or trim(path) == "" 
+  if not path or trim(path) == ""
   then return false end
-  local dir_list_cmd 
+  local dir_list_cmd
   local list = {}
-  if not is_dir(path) then return false end
-  
-  if openSub.conf.os == "win" then
-    dir_list_cmd = io.popen('dir /b "'..path..'"')
-  elseif openSub.conf.os == "lin" then
-    dir_list_cmd = io.popen('ls -1 "'..path..'"')
-  end
-  
+
+  dir_list_cmd = vlc.io.readdir(path)
+
   if dir_list_cmd then
-    for filename in dir_list_cmd:lines() do
-      if string.match(filename, "^[^%s]+.+$") then
-        table.insert(list, filename)
+    for _, entry in dir_list_cmd do
+      if string.match(entry, "^[^%s]+.+$") then
+        table.insert(list, entry.path .. slash .. entry.filename)
       end
     end
     return list
@@ -2262,18 +2177,15 @@ end
 
 function is_win_safe(path)
   if not path or trim(path) == "" 
-  or not is_window_path(path)
-  then return false end
+  or not is_window_path(path) then
+    return false
+  end
   return string.match(path, "^%a?%:?[\\%w%p%s§¤]+$")
 end
     
 function trim(str)
   if not str then return "" end
   return string.gsub(str, "^[\r\n%s]*(.-)[\r\n%s]*$", "%1")
-end
-
-function remove_tag(str)
-  return string.gsub(str, "{[^}]+}", "")
 end
 
 local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
