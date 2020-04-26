@@ -1,6 +1,7 @@
 --[[
 VLSub Extension for VLC media player 1.1 and 2.0
 Copyright 2013 Guillaume Le Maout
+
 Authors:  Guillaume Le Maout
 Contact: 
 http://addons.videolan.org/messages/?action=newmessage&username=exebetche
@@ -13,10 +14,12 @@ This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
+
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
+
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
@@ -154,13 +157,16 @@ local options = {
   
     action_login = 'Logging in',
     action_logout = 'Logging out',
+    action_noop = 'Checking session',
     action_search = 'Searching subtitles',
     action_hash = 'Calculating movie hash',
     
     mess_success = 'Success',
     mess_error = 'Error',
+    mess_warn = 'Warning',
     mess_no_response = 'Server not responding',
     mess_unauthorized = 'Request unauthorized',
+    mess_expired = 'Session expired, retrying',
     mess_overloaded = 'Server overloaded, please retry later',
     mess_no_input = 'Please use this method during playing',
     mess_not_local = 'This method works with local file only (for now)',
@@ -168,6 +174,7 @@ local options = {
     mess_not_found2 = 'File not found (illegal character?)',
     mess_no_selection = 'No subtitles selected',
     mess_save_fail = 'Unable to save subtitles',
+    mess_save_warn = 'Unable to save subtitles in file folder, using config folder',
     mess_click_link = 'Click here to open the file',
     mess_complete = 'Research complete',
     mess_no_res = 'No result',
