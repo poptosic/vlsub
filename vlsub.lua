@@ -1818,6 +1818,11 @@ function error_tag(str)
   lang["mess_error"]..":</b></span> "..str..""
 end
 
+function warn_tag(str)
+  return "<span style='color:#CF0'><b>"..
+  lang["mess_warn"]..":</b></span> "..str..""
+end
+
             --[[ Network utils]]--
 
 function get(url, username, password)
