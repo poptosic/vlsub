@@ -1306,7 +1306,7 @@ openSub = {
       local parsed_uri = vlc.net.url_parse(item:uri())
       file.uri = item:uri()
       file.protocol = parsed_uri["protocol"]
-      file.path = parsed_uri["path"]
+      file.path = parsed_uri["path"] or ''
       
     -- Corrections
       
